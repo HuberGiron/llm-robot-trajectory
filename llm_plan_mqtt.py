@@ -19,6 +19,7 @@ from typing import Optional, Tuple
 
 import requests
 import paho.mqtt.client as mqtt
+import os
 
 
 # =========================
@@ -238,7 +239,22 @@ class MqttPub:
         self.port = port
         self.keepalive = keepalive
         self.connected = False
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=True)
+        transport = os.getenv("MQTT_TRANSPORT", "tcp").strip().lower()
+        ws_path   = os.getenv("MQTT_WS_PATH", "/mqtt").strip() or "/mqtt"
+        use_tls   = os.getenv("MQTT_TLS", "0").strip().lower() in {"1","true","yes","on"}
+
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION2,
+            client_id=client_id,
+            clean_session=True,
+            transport=("websockets" if transport == "websockets" else "tcp"),
+        )
+
+        if transport == "websockets":
+            self.client.ws_set_options(path=ws_path)
+            if use_tls:
+                self.client.tls_set()
+
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
 
@@ -249,7 +265,7 @@ class MqttPub:
         else:
             print(f"[MQTT] Error connect reason_code={reason_code}")
 
-    def _on_disconnect(self, client, userdata, reason_code, properties):
+    def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties):
         self.connected = False
         print(f"[MQTT] Desconectado reason_code={reason_code}")
 
@@ -260,7 +276,7 @@ class MqttPub:
         while not self.connected and (time.monotonic() - t0) < timeout_s:
             time.sleep(0.05)
         if not self.connected:
-            raise RuntimeError("No se pudo conectar al broker MQTT en 5s.")
+            raise RuntimeError(f"No se pudo conectar al broker MQTT en {timeout_s:.1f}s.")
 
     def publish(self, topic: str, payload: str, qos: int = 0, retain: bool = False):
         self.client.publish(topic, payload=payload, qos=qos, retain=retain)

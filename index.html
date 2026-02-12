@@ -83,9 +83,9 @@
           <div class="quick-actions">
             <button id="btnStop" class="quick-button llm" type="button">⏹ Detener</button>
             <button id="btnCenter" class="quick-button llm" type="button">◎ Centro</button>
-
+<!-- 
             <button id="btnCircle" class="quick-button llm" type="button">○ Círculo</button>
-            <button id="btnFigure8" class="quick-button llm" type="button">∞ Figura 8 </button>
+            <button id="btnFigure8" class="quick-button llm" type="button">∞ Figura 8 </button> -->
           </div>
 
           <!-- LLM hero -->
@@ -117,16 +117,23 @@
               <summary>Ayuda (ejemplos rápidos)</summary>
 
               <div class="help-chips">
-                <button class="chip" data-prompt="Ve al centro (0,0) suave en 5s.">Centro suave</button>
-                <button class="chip" data-prompt="Traza un círculo radio 200mm en 30s centrado en (0,0).">Círculo</button>
-                <button class="chip" data-prompt="Traza una figura en 8 centrada en (0,0) con amplitud 200mm en 40s.">Figura 8</button>
-                <button class="chip" data-prompt="Haz una línea recta desde donde estés hasta (300,150) en 10s.">Línea</button>
-                <button class="chip" data-prompt="Haz una senoide en x de -300 a 300 con amplitud 150 en 30s.">Senoide</button>
-                <button class="chip" data-prompt="Haz un cuadrado con 4 waypoints de 200mm de lado centrado en (0,0).">Cuadrado</button>
-              </div>
+                <!-- Básicos / navegación -->
+                <button class="chip" data-prompt="Ve al centro (0,0) suave en 5s.">Centro</button>
+                <button class="chip" data-prompt="Ve a la esquina superior derecha (500,300) en 8s.">Esquina sup-der</button>
+                <button class="chip" data-prompt="Muévete 150 a la derecha.">Derecha 150</button>
+                <button class="chip" data-prompt="Avanza 150 hacia adelante.">Adelante 150</button>
 
-              <div class="mqtt-hint">
-                Tip: <b>Detener</b>, <b>Centro</b>, <b>Círculo</b> y <b>Figura 8</b> pasan por el LLM (planner).
+                <!-- Trayectorias representativas -->
+                <button class="chip" data-prompt="Haz una línea recta desde donde estés hasta (300,150) en 10s.">Línea</button>
+                <button class="chip" data-prompt="Traza un círculo de radio 180 centrado en (0,0), 1 vuelta en 20s.">Círculo</button>
+                <button class="chip" data-prompt="Traza una elipse centrada en (0,0) con a=350 y b=200 en 24s.">Elipse</button>
+                <button class="chip" data-prompt="Traza una figura en 8 centrada en (0,0) con a=240 y b=140 en 24s.">Figura 8</button>
+                <button class="chip" data-prompt="Haz una senoide de x=-400 a x=400 con amplitud 120 en 20s.">Senoide</button>
+                <button class="chip" data-prompt="Haz un cuadrado centrado en (0,0) de lado 400, 1 vuelta en 20s.">Cuadrado</button>
+                <button class="chip" data-prompt="Haz una pista tipo racetrack centrada en (0,0), ancho 700, alto 240, 1 vuelta en 22s.">Racetrack</button>
+
+                <!-- Control / planeación -->
+                <button class="chip" data-prompt="Detente de inmediato.">STOP</button>
               </div>
             </details>
 

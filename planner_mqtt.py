@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple
 
 import paho.mqtt.client as mqtt
+import os
 
 
 # =========================
@@ -545,27 +546,44 @@ def main():
     ap.add_argument("--y_positive", choices=["up", "down"], default="up", help="convención al PUBLICAR al robot")
     ap.add_argument("--client_id", default=f"planner_{int(time.time())}")
     args = ap.parse_args()
+    args.host = os.getenv("MQTT_HOST", args.host)
+    args.port = int(os.getenv("MQTT_PORT", args.port))
 
     state = PlannerState(x=0.0, y=0.0, seq=0, mode="hold", paused=False, traj=Hold((0.0, 0.0)), traj_started_ms=now_ms())
     lock = threading.Lock()
     pending_cmd: Dict[str, Any] = {"has": False, "msg": None}
 
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.client_id, clean_session=True)
+    transport = os.getenv("MQTT_TRANSPORT", "tcp").strip().lower()   # "tcp" o "websockets"
+    ws_path   = os.getenv("MQTT_WS_PATH", "/mqtt").strip() or "/mqtt"
+    use_tls   = os.getenv("MQTT_TLS", "0").strip().lower() in {"1","true","yes","on"}
+
+    client = mqtt.Client(
+        mqtt.CallbackAPIVersion.VERSION2,
+        client_id=args.client_id,
+        clean_session=True,
+        transport=("websockets" if transport == "websockets" else "tcp"),
+    )
+
+    if transport == "websockets":
+        client.ws_set_options(path=ws_path)
+        if use_tls:
+            client.tls_set()
 
     connected = {"ok": False}
 
     def on_connect(cl, userdata, flags, reason_code, properties):
         connected["ok"] = (reason_code == 0)
         if connected["ok"]:
-            print(f"[MQTT] Conectado a {args.host}:{args.port}")
+            print(f"[MQTT] Conectado a {host}:{port}")
             cl.subscribe(args.cmd_topic, qos=args.qos)
             print(f"[SUB ] cmd_topic='{args.cmd_topic}' qos={args.qos}")
         else:
             print(f"[MQTT] Error connect reason_code={reason_code}")
 
-    def on_disconnect(cl, userdata, reason_code, properties):
+    def on_disconnect(cl, userdata, disconnect_flags, reason_code, properties):
         connected["ok"] = False
         print(f"[MQTT] Desconectado reason_code={reason_code}")
+
 
     def on_message(cl, userdata, msg):
         try:
@@ -583,7 +601,13 @@ def main():
     client.on_disconnect = on_disconnect
     client.on_message = on_message
 
-    client.connect(args.host, args.port, keepalive=30)
+    host = os.getenv("MQTT_HOST", args.host)
+    port = int(os.getenv("MQTT_PORT", args.port))
+    # justo antes de connect()
+    keepalive = int(os.getenv("MQTT_KEEPALIVE", "60"))   # prueba 60; si sigue, prueba 120 o 0
+    client.connect(host, port, keepalive=keepalive)
+
+
     client.loop_start()
 
     # Espera conexión
@@ -712,7 +736,13 @@ def main():
                 time.sleep(next_tick - now)
                 continue
 
+            # Si estamos tarde (nos saltamos uno o más ticks), NO mandes ráfagas:
+            # re-sincroniza el reloj para seguir a 10 Hz desde "ahora".
+            if now - next_tick > dt:
+                next_tick = now
+
             next_tick += dt
+
 
             with lock:
                 if state.paused:

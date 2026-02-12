@@ -30,11 +30,14 @@ WARMUP_ENABLED = os.getenv("WARMUP_ENABLED", "1").strip().lower() not in {"0", "
 API_KEY = os.getenv("API_KEY", "")  # si lo pones, el cliente debe mandarlo
 
 _pub_lock = threading.Lock()
-pub = MqttPub(MQTT_HOST, MQTT_PORT, keepalive=30, client_id=f"api_{int(time.time())}")
+
+MQTT_KEEPALIVE = int(os.getenv("MQTT_KEEPALIVE", "60"))
+
+pub = MqttPub(MQTT_HOST, MQTT_PORT, keepalive=MQTT_KEEPALIVE, client_id=f"api_{int(time.time())}")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    pub.connect()
+    pub.connect(timeout_s=15.0)
 
     # Warmup del LLM: 5 corridas por defecto (NO publica a MQTT)
     if WARMUP_ENABLED and WARMUP_N > 0:
