@@ -1,28 +1,22 @@
-// ui.js
-// Compatible con tu index.html actual:
-// - Radios: input[name="targetSource"] con value="manual" | "mqtt"
-// - Inputs manuales objetivo: #endX y #endY
-// - Panel MQTT: #mqttPanel
-// - Controles manuales dentro del primer <details> de .info-boxes (sin id)
+// ui.js (MQTT-only)
+// - Panel MQTT siempre visible
+// - Auto-conectar al cargar
+// - Auto-iniciar simulación (si tu botón animateBtn arranca/paraa)
+// - Mantiene compatibilidad con ids existentes
 
 (() => {
   const q = (sel, root = document) => root.querySelector(sel);
-  const qa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-  // Elementos según tu HTML
-  const manualRadio = q('input[name="targetSource"][value="manual"]');
-  const mqttRadio = q('input[name="targetSource"][value="mqtt"]');
-  const radios = qa('input[name="targetSource"]');
+  const mqttPanel = q("#mqttPanel");
+  const mqttConnectBtn = q("#mqttConnectBtn");
 
-  const mqttPanel = document.getElementById("mqttPanel");
+  const endX = q("#endX");
+  const endY = q("#endY");
 
-  // Objetivo manual (inputs dentro de <details>)
-  const endX = document.getElementById("endX");
-  const endY = document.getElementById("endY");
-
-  // <details> donde están los controles de simulación (el primero dentro de .info-boxes)
   const controlsDetails =
-    document.getElementById("controlsPanel") || q("section.info-boxes details");
+    q("#controlsPanel") || q("section.info-boxes details");
+
+  const animateBtn = q("#animateBtn");
 
   function setDisabled(el, disabled) {
     if (!el) return;
@@ -30,46 +24,38 @@
     el.setAttribute("aria-disabled", disabled ? "true" : "false");
   }
 
-  function show(el, visible) {
-    if (!el) return;
-    el.style.display = visible ? "" : "none";
-    el.setAttribute("aria-hidden", visible ? "false" : "true");
-  }
-
-  function getMode() {
-    return mqttRadio && mqttRadio.checked ? "mqtt" : "manual";
-  }
-
-  function applyMode(mode) {
-    const isMQTT = mode === "mqtt";
-
-    // Panel MQTT visible solo en modo MQTT
-    show(mqttPanel, isMQTT);
-
-    // Inputs manuales objetivo deshabilitados en MQTT
-    setDisabled(endX, isMQTT);
-    setDisabled(endY, isMQTT);
-
-    // Mantén controles manuales ocultos por default.
-    // Solo forzamos cerrar el details cuando cambias a MQTT.
-    if (controlsDetails && isMQTT) {
-      controlsDetails.open = false;
-    }
-  }
-
-  function wireEvents() {
-    if (!radios.length) return;
-    radios.forEach((r) => {
-      r.addEventListener("change", () => applyMode(getMode()));
-    });
+  function looksLikeStartButton(btn) {
+    if (!btn) return false;
+    const txt = (btn.textContent || "").toLowerCase();
+    return txt.includes("iniciar") || txt.includes("start") || txt.includes("play");
   }
 
   function init() {
-    wireEvents();
-    applyMode(getMode());
+    // MQTT panel visible siempre
+    if (mqttPanel) {
+      mqttPanel.style.display = "";
+      mqttPanel.setAttribute("aria-hidden", "false");
+    }
+
+    // En MQTT-only deshabilitamos objetivo manual
+    setDisabled(endX, true);
+    setDisabled(endY, true);
+
+    // Oculta controles avanzados por default (no los borramos)
+    if (controlsDetails) controlsDetails.open = false;
+
+    // Auto-conectar (usa tu handler existente del botón)
+    // Nota: si tu código MQTT conecta automáticamente sin botón, esto no estorba.
+    setTimeout(() => {
+      mqttConnectBtn?.click();
+    }, 50);
+
+    // Auto-iniciar simulación: solo si el botón "parece Iniciar"
+    setTimeout(() => {
+      if (looksLikeStartButton(animateBtn)) animateBtn.click();
+    }, 120);
   }
 
-  // DOM ready
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {

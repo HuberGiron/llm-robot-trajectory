@@ -5,6 +5,37 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Robot Móvil - Simulación</title>
   <link rel="stylesheet" href="styles.css" />
+
+  <!-- Overrides mínimos para layout (desktop 2 cols / móvil 1 col) y evitar overflow -->
+  <style>
+    .app-layout{
+      display:grid;
+      grid-template-columns: minmax(420px, 640px) 1fr;
+      gap:18px;
+      align-items:start;
+    }
+    .left-panel, .right-panel{ min-width:0; }
+
+    /* Canvas dentro del grid: NO usar vw aquí */
+    .right-panel .canvas-container{
+      width:100% !important;
+      max-width:1200px;
+      margin:0 auto;
+    }
+    .right-panel canvas{
+      width:100%;
+      height:auto;
+      display:block;
+    }
+
+    /* Ocultar inputs legacy pero mantenerlos en DOM para canvas.js */
+    .hidden-inputs{ display:none !important; }
+
+    @media (max-width: 980px){
+      .app-layout{ grid-template-columns: 1fr; }
+    }
+  </style>
+
   <!-- Configuración de MathJax para ecuaciones en LaTeX -->
   <script>
   window.MathJax = {
@@ -14,9 +45,7 @@
       processEscapes: true,
       fontCache: 'global'
     },
-    options: {
-      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
-    }
+    options: { skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre'] }
   };
   </script>
   <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -24,116 +53,149 @@
 
 <body>
   <h1>GEMELO DIGITAL- Robots Móviles uniciclo</h1>
-  
-  <!-- Sección de cajas de contenido desplegables -->
-  <section class="info-boxes">
 
-    <!-- Controles de simulación -->
-    <div class="target-source">
-      <label class="constant-label">Fuente de objetivo (Xs, Ys):</label>
-      <div class="radio-row">
-        <label><input type="radio" name="targetSource" value="manual" checked> Manual</label>
-        <label><input type="radio" name="targetSource" value="mqtt"> MQTT</label>
-      </div>
-    </div>
-    <br>
-    
-    <!-- Diagrama Cinemático -->
-    <details>
-      <summary>Controles de simulación</summary>
-      <div class="diagram-container">
-        <!-- Controles de simulación -->
-        <div class="controls">
-          <div class="variable-inputs">
-            <label for="startX">X Inicial (mm):</label>
-            <input type="number" id="startX" value="0">
-            <label for="startY">Y Inicial (mm):</label>
-            <input type="number" id="startY" value="0">
-            <label for="angle">Ángulo Inicial (°):</label>
-            <input type="number" id="angle" value="0" step="1">
+  <div class="app-layout">
+    <!-- PANEL IZQUIERDO -->
+    <div class="left-panel">
 
-            <label for="endX">X Final deseada (mm):</label>
-            <input type="number" id="endX" value="100">
-            <label for="endY">Y Final deseada (mm):</label>
-            <input type="number" id="endY" value="100">
+      <!-- Sección de cajas de contenido desplegables -->
+      <section class="info-boxes">
+
+        <!-- Controles -->
+        <details>
+          <summary>Controles de simulación</summary>
+          <div class="diagram-container">
+            <div class="controls">
+
+              <!-- IMPORTANTE: estos inputs se conservan (ocultos) para no romper canvas.js -->
+              <div class="variable-inputs hidden-inputs">
+                <label for="startX">X Inicial (mm):</label>
+                <input type="number" id="startX" value="0">
+                <label for="startY">Y Inicial (mm):</label>
+                <input type="number" id="startY" value="0">
+                <label for="angle">Ángulo Inicial (°):</label>
+                <input type="number" id="angle" value="0" step="1">
+
+                <label for="endX">X Final deseada (mm):</label>
+                <input type="number" id="endX" value="0">
+                <label for="endY">Y Final deseada (mm):</label>
+                <input type="number" id="endY" value="0">
+              </div>
+
+              <!-- Solo visibles -->
+              <div class="constant-inputs">
+                <label for="k" class="constant-label">Ganancia K:</label>
+                <input type="number" id="k" value="0.5" step="0.01">
+
+                <label for="l" class="constant-label">Distancia l (mm):</label>
+                <input type="number" id="l" value="50" step="1">
+
+                <label for="dt" class="constant-label">Tiempo dt (s):</label>
+                <input type="number" id="dt" value="0.05" step="0.01">
+              </div>
+
+            </div>
+          </div>
+        </details>
+
+        <!-- Panel MQTT + LLM -->
+        <div id="mqttPanel" class="mqtt-panel">
+          <!-- Broker oculto (se mantiene el id para compatibilidad con tu JS MQTT actual) -->
+          <input type="hidden" id="mqttUrl" value="wss://test.mosquitto.org:8081/mqtt">
+
+          <!-- Barra superior: estado + reconectar + tópico visible -->
+          <div class="mqtt-topbar">
+            <div class="mqtt-top-left">
+              <span id="mqttStatus" class="mqtt-status offline">Conectando…</span>
+              <button id="mqttConnectBtn" class="small-button" type="button">Reconectar</button>
+            </div>
+
+            <div class="mqtt-top-right">
+              <label for="mqttTopic" class="constant-label">Canal / Tópico (usuario):</label>
+              <input type="text" id="mqttTopic" value="huber/robot/goal">
+            </div>
           </div>
 
-          <div class="constant-inputs">
-            <label for="k" class="constant-label">Ganancia K:</label>
-            <input type="number" id="k" value="0.5" step="0.01">
-            <label for="l" class="constant-label">Distancia l (mm):</label>
-            <input type="number" id="l" value="50" step="1">
-            <label for="dt" class="constant-label">Tiempo dt (s):</label>
-            <input type="number" id="dt" value="0.05" step="0.01">
+          <!-- Botones rápidos -->
+          <div class="quick-actions">
+            <button id="btnStop" class="quick-button llm" type="button">⏹ Detener (LLM)</button>
+            <button id="btnCenter" class="quick-button llm" type="button">◎ Centro (LLM)</button>
+
+            <button id="btnCircle" class="quick-button llm" type="button">○ Círculo (LLM)</button>
+            <button id="btnFigure8" class="quick-button llm" type="button">∞ Figura 8 (LLM)</button>
           </div>
-        </div>
-      </div>
-    </details>
-    
-    <div id="mqttPanel" class="mqtt-panel" style="display:none;">
-      <label for="mqttUrl" class="constant-label">Broker MQTT (WebSocket):</label>
-      <input type="text" id="mqttUrl" value="wss://test.mosquitto.org:8081/mqtt">
-      <label for="mqttTopic" class="constant-label">Tópico objetivo:</label>
-      <input type="text" id="mqttTopic" value="huber/robot/goal">
 
-      <div class="mqtt-row">
-        <button id="mqttConnectBtn" class="small-button" type="button">Conectar</button>
-        <span id="mqttStatus" class="mqtt-status offline">Desconectado</span>
-      </div>
+          <!-- LLM hero -->
+          <div class="llm-panel llm-hero">
+            <div class="llm-header">
+              <div class="llm-title">Instrucción al LLM</div>
+              <span id="llmStatus" class="mqtt-status offline">LLM: idle</span>
+            </div>
 
-      <div class="mqtt-hint">
-        Formato de mensaje esperado: <code>{"x":100,"y":-50}</code> o <code>100,-50</code> (mm)
-      </div>
+            <textarea id="llmPrompt" rows="3"
+              placeholder="Ej: haz un círculo radio 200mm en 30s, centrado en (0,0)"></textarea>
 
-      <hr style="margin:14px 0">
-      <div class="llm-panel">
-        <label class="constant-label">Instrucción al LLM (publica al planner):</label>
-        <textarea id="llmPrompt" rows="2" style="width:100%;max-width:720px;"
-          placeholder="Ej: haz un círculo de radio 200 en 30s, centrado en (0,0)"></textarea>
+            <div class="llm-actions">
+              <button id="llmSendBtn" class="llm-send" type="button">Enviar</button>
+              <div class="llm-hint">Ctrl+Enter para enviar</div>
+            </div>
 
-        <div class="mqtt-row" style="margin-top:8px;">
-          <button id="llmSendBtn" class="small-button" type="button">Enviar al LLM</button>
-          <span id="llmStatus" class="mqtt-status offline">LLM: idle</span>
-        </div>
+            <!-- Ayuda desplegable -->
+            <details class="llm-help">
+              <summary>Ayuda (ejemplos rápidos)</summary>
 
-        <div class="mqtt-hint">
-          Tip: Enter = nueva línea, Ctrl+Enter = enviar.
+              <div class="help-chips">
+                <button class="chip" data-prompt="Ve al centro (0,0) suave en 5s.">Centro suave</button>
+                <button class="chip" data-prompt="Traza un círculo radio 200mm en 30s centrado en (0,0).">Círculo</button>
+                <button class="chip" data-prompt="Traza una figura en 8 centrada en (0,0) con amplitud 200mm en 40s.">Figura 8</button>
+                <button class="chip" data-prompt="Haz una línea recta desde donde estés hasta (300,150) en 10s.">Línea</button>
+                <button class="chip" data-prompt="Haz una senoide en x de -300 a 300 con amplitud 150 en 30s.">Senoide</button>
+                <button class="chip" data-prompt="Haz un cuadrado con 4 waypoints de 200mm de lado centrado en (0,0).">Cuadrado</button>
+              </div>
+
+              <div class="mqtt-hint">
+                Tip: <b>Detener</b>, <b>Centro</b>, <b>Círculo</b> y <b>Figura 8</b> pasan por el LLM (planner).
+              </div>
+            </details>
+          </div><!-- /.llm-panel -->
+        </div><!-- /#mqttPanel -->
+
+      </section>
+
+      <!-- Botones generales (se quedan como estaban para compatibilidad) -->
+      <div class="controls">
+        <div class="button-controls">
+          <button id="animateBtn" class="control-button">
+            <span id="animateIcon">&#9658;</span> Iniciar
+          </button>
+          <button id="restartBtn" class="control-button">
+            <span id="restartIcon">&#8635;</span> Reiniciar
+          </button>
+          <button id="saveSessionBtn" class="control-button">
+            <span id="saveIcon">&#128190;</span> Guardar CSV sesión
+          </button>
         </div>
       </div>
 
     </div>
 
-  </section>
-  
-  <!-- Controles de simulación -->
-  <div class="controls">
-    <div class="button-controls">
-      <button id="animateBtn" class="control-button">
-        <span id="animateIcon">&#9658;</span> Iniciar
-      </button>
-      <button id="restartBtn" class="control-button">
-        <span id="restartIcon">&#8635;</span> Reiniciar
-      </button>
-      <button id="saveSessionBtn" class="control-button">
-        <span id="saveIcon">&#128190;</span> Guardar CSV sesión
-      </button>
+    <!-- PANEL DERECHO -->
+    <div class="right-panel">
+      <div id="cycleCounter">Ciclos: 0 - Tiempo: 0.00 s</div>
+
+      <div class="canvas-container">
+        <canvas id="robotCanvas"></canvas>
+      </div>
+
+      <div class="download-buttons">
+        <button onclick="downloadCanvas()">Descargar Imagen de la Animación</button>
+      </div>
+
+      <div id="robotInfo"></div>
     </div>
   </div>
-  
-  <div id="cycleCounter">Ciclos: 0 - Tiempo: 0.00 s</div>
-  
-  <div class="canvas-container">
-    <canvas id="robotCanvas"></canvas>
-  </div>
-  
-  <!-- Botón para descargar la imagen actual del canvas de la animación -->
-  <div class="download-buttons">
-    <button onclick="downloadCanvas()">Descargar Imagen de la Animación</button>
-  </div>
-  
-  <!-- Panel para mostrar información en tiempo real del robot -->
-  <div id="robotInfo"></div>
-  
+
+  <!-- GRÁFICAS ABAJO (full-width) -->
   <div class="chart-section">
     <h3>Error vs Tiempo</h3>
     <div class="chart-container">
@@ -144,7 +206,7 @@
       <button onclick="downloadCSVForChart('error')">Descargar CSV</button>
     </div>
   </div>
-  
+
   <div class="chart-section">
     <h3>Posición vs Tiempo</h3>
     <div class="chart-container">
@@ -155,7 +217,7 @@
       <button onclick="downloadCSVForChart('position')">Descargar CSV</button>
     </div>
   </div>
-  
+
   <div class="chart-section">
     <h3>Control vs Tiempo</h3>
     <div class="chart-container">
@@ -166,17 +228,16 @@
       <button onclick="downloadCSVForChart('control')">Descargar CSV</button>
     </div>
   </div>
-  
-  <!-- Librería Chart.js -->
+
+  <!-- Librerías -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <!-- Librería MQTT.js (cliente MQTT en navegador) -->
   <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+
   <!-- Nuestros scripts -->
   <script src="robot.js"></script>
   <script src="charts.js"></script>
   <script src="canvas.js"></script>
   <script src="ui.js"></script>
   <script src="llm_ui.js"></script>
-
 </body>
 </html>
