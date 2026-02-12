@@ -22,6 +22,10 @@ CMD_TOPIC   = os.getenv("CMD_TOPIC", "huber/robot/plan/cmd")
 OLLAMA_URL  = os.getenv("OLLAMA_URL", OLLAMA_URL_DEFAULT)
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "mistral-nemo:12b-instruct-2407-q4_0")
 
+# Warmup (default: 5) - NO publica
+WARMUP_N = int(os.getenv("WARMUP", "5"))
+WARMUP_ENABLED = os.getenv("WARMUP_ENABLED", "1").strip().lower() not in {"0", "false", "no", "off"}
+
 # Seguridad mínima opcional (LAN demo: déjalo vacío)
 API_KEY = os.getenv("API_KEY", "")  # si lo pones, el cliente debe mandarlo
 
@@ -31,6 +35,39 @@ pub = MqttPub(MQTT_HOST, MQTT_PORT, keepalive=30, client_id=f"api_{int(time.time
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     pub.connect()
+
+    # Warmup del LLM: 5 corridas por defecto (NO publica a MQTT)
+    if WARMUP_ENABLED and WARMUP_N > 0:
+        warm_prompts = [
+            "vete al centro",
+            "derecha 100",
+            "izquierda 100",
+            "haz un circulo",
+            "haz una elipse",
+        ]
+        print(f"\n[WARMUP] {WARMUP_N} corridas (NO publica). Model={OLLAMA_MODEL}")
+        for i in range(WARMUP_N):
+            txt = warm_prompts[i % len(warm_prompts)]
+            cmd, raw = None, ""
+            try:
+                cmd, raw = ollama_generate(OLLAMA_MODEL, txt, OLLAMA_URL)
+                used = (cmd is not None)
+            except Exception as e:
+                raw = f"ERROR: {e}"
+                used = False
+
+            if not cmd:
+                cmd = fallback_cmd(txt)
+
+            # clamp (para calentar también esa ruta)
+            cmd = _clamp_cmd_inplace(cmd)
+
+            # NO publica: solo log corto
+            tag = "LLM" if used else "fallback/err"
+            print(f"  [{i+1}/{WARMUP_N}] {tag}: '{txt}'")
+
+        print("[WARMUP] listo.\n")
+
     yield
     pub.close()
 

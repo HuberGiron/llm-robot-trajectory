@@ -1,6 +1,6 @@
 // ===== Estilo responsivo (desktop vs móvil) =====
 const MOBILE_BP = 800; // mismo breakpoint que usas para la imagen
-const STYLE_DESKTOP = { pathPx: 8, dotPx: 12 };
+const STYLE_DESKTOP = { pathPx: 4, dotPx: 8 };
 const STYLE_MOBILE  = { pathPx: 4,  dotPx: 8 };
 let extXData = [];
 let extYData = [];
@@ -312,6 +312,11 @@ const desired = {
 let mqttClient = null;
 let mqttIsConnected = false;
 let mqttSubscribedTopic = '';
+
+// NUEVO: tópico donde el LLM publica el JSON al planificador
+let mqttCmdSubscribedTopic = '';
+const DEFAULT_CMD_TOPIC = 'huber/robot/plan/cmd';
+
 
 function clamp(v, min, max) {
   return Math.max(min, Math.min(max, v));
@@ -1065,6 +1070,20 @@ function setMqttStatus(state, text) {
   mqttStatusEl.classList.add(state);
 }
 
+function renderLastPlannerCmd(raw) {
+  const el = document.getElementById('lastCmdJson');
+  if (!el) return;
+
+  try {
+    const obj = JSON.parse(raw);
+    el.textContent = JSON.stringify(obj, null, 2);
+  } catch (e) {
+    // si no es JSON válido, lo mostramos tal cual
+    el.textContent = String(raw);
+  }
+}
+
+
 function mqttConnect() {
   // Forzar modo MQTT para aceptar inmediatamente mensajes entrantes
   if (desired.source !== 'mqtt') {
@@ -1124,19 +1143,28 @@ function mqttConnect() {
   });
 
   mqttClient.on('message', (t, msg) => {
-  if (t !== mqttSubscribedTopic) return;
   const payload = msg.toString();
+
+  // NUEVO: si llega el CMD JSON (LLM->planner), solo lo mostramos y salimos
+  if (t === mqttCmdSubscribedTopic) {
+    renderLastPlannerCmd(payload);
+    return;
+  }
+
+  // Lo demás: es el goal (pos deseada) para el canvas
+  if (t !== mqttSubscribedTopic) return;
+
   const parsed = parseGoalPayload(payload);
   if (!parsed) return;
 
   setDesired(parsed.x, parsed.y, 'mqtt');
 
-  // ✅ NUEVO: forzar actualización visual inmediata cuando no estás corriendo animación
   if (simState !== 'running') {
     drawAllElements();
     maybeUpdateRobotInfo(performance.now(), true);
   }
 });
+
 
 
 }
@@ -1152,6 +1180,7 @@ function mqttDisconnect() {
   mqttClient = null;
   mqttIsConnected = false;
   mqttSubscribedTopic = '';
+  mqttCmdSubscribedTopic = ''; // NUEVO
   setMqttStatus('offline', 'Desconectado');
   mqttConnectBtn.textContent = 'Conectar';
 }
@@ -1175,6 +1204,23 @@ function mqttResubscribe() {
       setMqttStatus('offline', 'Error al suscribir');
     }
   });
+
+    // NUEVO: suscripción al tópico de comandos LLM->planner (JSON)
+  const cmdTopic =
+    (document.getElementById('mqttCmdTopic')?.value || DEFAULT_CMD_TOPIC).trim();
+
+  if (cmdTopic) {
+    if (mqttCmdSubscribedTopic && mqttCmdSubscribedTopic !== cmdTopic) {
+      try { mqttClient.unsubscribe(mqttCmdSubscribedTopic); } catch (e) {}
+    }
+
+    mqttCmdSubscribedTopic = cmdTopic;
+
+    mqttClient.subscribe(cmdTopic, { qos: 0 }, (err) => {
+      if (err) console.error(err);
+    });
+  }
+
 }
 
 // Acepta {"x":100,"y":-50} o "100,-50" o "100 -50"
