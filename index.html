@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Robot Móvil - Simulación</title>
+  <link rel="stylesheet" href="styles.css" />
+  <!-- Configuración de MathJax para ecuaciones en LaTeX -->
+  <script>
+  window.MathJax = {
+    tex: {
+      inlineMath: [['$', '$'], ['\\(', '\\)']],
+      displayMath: [['$$', '$$'], ['\\[', '\\]']],
+      processEscapes: true,
+      fontCache: 'global'
+    },
+    options: {
+      skipHtmlTags: ['script', 'noscript', 'style', 'textarea', 'pre']
+    }
+  };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+</head>
+
+<body>
+  <h1>GEMELO DIGITAL- Robots Móviles uniciclo</h1>
+  
+  <!-- Sección de cajas de contenido desplegables -->
+  <section class="info-boxes">
+
+    <!-- Controles de simulación -->
+    <div class="target-source">
+      <label class="constant-label">Fuente de objetivo (Xs, Ys):</label>
+      <div class="radio-row">
+        <label><input type="radio" name="targetSource" value="manual" checked> Manual</label>
+        <label><input type="radio" name="targetSource" value="mqtt"> MQTT</label>
+      </div>
+    </div>
+    <br>
+    
+    <!-- Diagrama Cinemático -->
+    <details>
+      <summary>Controles de simulación</summary>
+      <div class="diagram-container">
+        <!-- Controles de simulación -->
+        <div class="controls">
+          <div class="variable-inputs">
+            <label for="startX">X Inicial (mm):</label>
+            <input type="number" id="startX" value="0">
+            <label for="startY">Y Inicial (mm):</label>
+            <input type="number" id="startY" value="0">
+            <label for="angle">Ángulo Inicial (°):</label>
+            <input type="number" id="angle" value="0" step="1">
+
+            <label for="endX">X Final deseada (mm):</label>
+            <input type="number" id="endX" value="100">
+            <label for="endY">Y Final deseada (mm):</label>
+            <input type="number" id="endY" value="100">
+          </div>
+
+          <div class="constant-inputs">
+            <label for="k" class="constant-label">Ganancia K:</label>
+            <input type="number" id="k" value="0.5" step="0.01">
+            <label for="l" class="constant-label">Distancia l (mm):</label>
+            <input type="number" id="l" value="50" step="1">
+            <label for="dt" class="constant-label">Tiempo dt (s):</label>
+            <input type="number" id="dt" value="0.05" step="0.01">
+          </div>
+        </div>
+      </div>
+    </details>
+    
+    <div id="mqttPanel" class="mqtt-panel" style="display:none;">
+      <label for="mqttUrl" class="constant-label">Broker MQTT (WebSocket):</label>
+      <input type="text" id="mqttUrl" value="wss://test.mosquitto.org:8081/mqtt">
+      <label for="mqttTopic" class="constant-label">Tópico objetivo:</label>
+      <input type="text" id="mqttTopic" value="huber/robot/goal">
+
+      <div class="mqtt-row">
+        <button id="mqttConnectBtn" class="small-button" type="button">Conectar</button>
+        <span id="mqttStatus" class="mqtt-status offline">Desconectado</span>
+      </div>
+
+      <div class="mqtt-hint">
+        Formato de mensaje esperado: <code>{"x":100,"y":-50}</code> o <code>100,-50</code> (mm)
+      </div>
+
+      <hr style="margin:14px 0">
+      <div class="llm-panel">
+        <label class="constant-label">Instrucción al LLM (publica al planner):</label>
+        <textarea id="llmPrompt" rows="2" style="width:100%;max-width:720px;"
+          placeholder="Ej: haz un círculo de radio 200 en 30s, centrado en (0,0)"></textarea>
+
+        <div class="mqtt-row" style="margin-top:8px;">
+          <button id="llmSendBtn" class="small-button" type="button">Enviar al LLM</button>
+          <span id="llmStatus" class="mqtt-status offline">LLM: idle</span>
+        </div>
+
+        <div class="mqtt-hint">
+          Tip: Enter = nueva línea, Ctrl+Enter = enviar.
+        </div>
+      </div>
+
+    </div>
+
+  </section>
+  
+  <!-- Controles de simulación -->
+  <div class="controls">
+    <div class="button-controls">
+      <button id="animateBtn" class="control-button">
+        <span id="animateIcon">&#9658;</span> Iniciar
+      </button>
+      <button id="restartBtn" class="control-button">
+        <span id="restartIcon">&#8635;</span> Reiniciar
+      </button>
+      <button id="saveSessionBtn" class="control-button">
+        <span id="saveIcon">&#128190;</span> Guardar CSV sesión
+      </button>
+    </div>
+  </div>
+  
+  <div id="cycleCounter">Ciclos: 0 - Tiempo: 0.00 s</div>
+  
+  <div class="canvas-container">
+    <canvas id="robotCanvas"></canvas>
+  </div>
+  
+  <!-- Botón para descargar la imagen actual del canvas de la animación -->
+  <div class="download-buttons">
+    <button onclick="downloadCanvas()">Descargar Imagen de la Animación</button>
+  </div>
+  
+  <!-- Panel para mostrar información en tiempo real del robot -->
+  <div id="robotInfo"></div>
+  
+  <div class="chart-section">
+    <h3>Error vs Tiempo</h3>
+    <div class="chart-container">
+      <canvas id="errorChart"></canvas>
+    </div>
+    <div class="download-buttons">
+      <button onclick="downloadChart(errorChart, 'errorChart')">Descargar Gráfica</button>
+      <button onclick="downloadCSVForChart('error')">Descargar CSV</button>
+    </div>
+  </div>
+  
+  <div class="chart-section">
+    <h3>Posición vs Tiempo</h3>
+    <div class="chart-container">
+      <canvas id="positionChart"></canvas>
+    </div>
+    <div class="download-buttons">
+      <button onclick="downloadChart(positionChart, 'positionChart')">Descargar Gráfica</button>
+      <button onclick="downloadCSVForChart('position')">Descargar CSV</button>
+    </div>
+  </div>
+  
+  <div class="chart-section">
+    <h3>Control vs Tiempo</h3>
+    <div class="chart-container">
+      <canvas id="controlChart"></canvas>
+    </div>
+    <div class="download-buttons">
+      <button onclick="downloadChart(controlChart, 'controlChart')">Descargar Gráfica</button>
+      <button onclick="downloadCSVForChart('control')">Descargar CSV</button>
+    </div>
+  </div>
+  
+  <!-- Librería Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Librería MQTT.js (cliente MQTT en navegador) -->
+  <script src="https://cdn.jsdelivr.net/npm/mqtt/dist/mqtt.min.js"></script>
+  <!-- Nuestros scripts -->
+  <script src="robot.js"></script>
+  <script src="charts.js"></script>
+  <script src="canvas.js"></script>
+  <script src="ui.js"></script>
+  <script src="llm_ui.js"></script>
+
+</body>
+</html>
